@@ -2,6 +2,7 @@
 #ifndef AST_H
 #define AST_H
 
+#include <string>
 class ExprAST {
 public:
   enum type{
@@ -10,16 +11,19 @@ public:
     type_float=2,
     type_char=3,
     type_bool=4,
+    type_string=5,
+    type_user=6,
   };
 protected:
   type typeval;
 public:
   virtual ~ExprAST() {}
-  type getType() {
+  inline type getType() {
       return typeval;
   }
-  void setType(type typev) {
+  inline void setType(type typev) {
       typeval=typev;
   }
+  static type getType(std::string type);
 };
 #endif

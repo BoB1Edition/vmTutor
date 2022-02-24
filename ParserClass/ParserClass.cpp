@@ -1,5 +1,9 @@
 #include "ParserClass.h"
+#include "FunctionAST.h"
+#include "Error.h"
 #include <unistd.h>
+#include <ctype.h>
+#include "../configure.h"
 
 ParserClass::ParserClass(std::string string) {
     this->SetString(string);
@@ -18,81 +22,56 @@ void ParserClass::SetString(std::string string) {
 
 int ParserClass::GetToken() {
     if(workstring.empty()) return -1;
-    std::string IdentifierStr = "";
-    std::string NumStr;
+    IdentifierStr = "";
+    //std::string NumStr;
     bool BoolVal;
     int LastChar = ' ';
     while ((LastChar = GetSymbol()) != -1) {
-        while (isspace(LastChar)) LastChar = GetSymbol();
+        while (isspace(LastChar) || LastChar=='\t' || LastChar=='\r' || LastChar=='\n') LastChar = GetSymbol();
+        if (LastChar == EOF) {
+            tokens.push_back(tok_eof);
+            return tok_eof;
+        }
         if (isalpha(LastChar)) { // идентификатор: [a-zA-Z][a-zA-Z0-9]*
             IdentifierStr = LastChar;
-            while (isalnum((LastChar = GetSymbol()))) IdentifierStr += LastChar;
+            while (isalnum((LastChar = GetSymbol())) || LastChar=='.') IdentifierStr += LastChar;
+            pos--;
             if (IdentifierStr == "func") {
+                debug_print("tok %s: tok_func\n", IdentifierStr.c_str());
                 tokens.push_back(tok_func);
                 return tok_func;
             }
-            if (IdentifierStr == "extern") {
-                tokens.push_back(tok_extern);
-                return tok_extern;
+            if ( IdentifierStr == "int" 
+              || IdentifierStr == "float" 
+              || IdentifierStr == "bool"
+              || IdentifierStr == "char"
+              || IdentifierStr == "string"
+            ) {
+                debug_print("tok %s: tok_variable\n", IdentifierStr.c_str());
+                tokens.push_back(tok_variable);
+                return tok_variable;
             }
-            if (IdentifierStr == "if") {
-                tokens.push_back(tok_if);
-                return tok_if;
-            }
-            if (IdentifierStr == "else") { 
-                tokens.push_back(tok_else);
-                return tok_else; 
-            }
-            if (IdentifierStr == "switch") {
-                tokens.push_back(tok_switch);
-                return tok_switch;
-            }
-            if (IdentifierStr == "case") {
-                tokens.push_back(tok_case);
-                return tok_case;
-            }
-            if (IdentifierStr == "default") {
-                tokens.push_back(tok_default);
-                return tok_default;
-            }
-            if (IdentifierStr == "for") {
-                tokens.push_back(tok_for);
-                return tok_for;
-            }
-            if (IdentifierStr == "while") {
-                tokens.push_back(tok_while);
-                return tok_while;
-            }
-            if (IdentifierStr == "do") {
-                tokens.push_back(tok_do);
-                return tok_do;
-            }
-            if (IdentifierStr == "true") {
-                BoolVal = true;
-                tokens.push_back(tok_bool);
-                return tok_bool;
-            }
-            if (IdentifierStr == "false") {
-                BoolVal = false;
-                tokens.push_back(tok_bool);
-                return tok_bool;
-            }
+            debug_print("tok %s: tok_identifier\n", IdentifierStr.c_str());
+            tokens.push_back(tok_identifier);
+            return tok_identifier;
         }
         if (isdigit(LastChar)) {
             bool quota = false;
             do {
                 if (LastChar == '.' && quota) {
-                    printf("check syntax: Number contains 2 .");
+                    debug_print("check syntax: Number contains 2 .\n");
                     exit(1);      
                 }
             if (LastChar == '.') quota = true;
-            NumStr += LastChar;
+            IdentifierStr += LastChar;
             LastChar = GetSymbol();
             } while (isdigit(LastChar) || LastChar == '.');
             if(!quota) {
+                debug_print("tok %s: tok_integer\n", IdentifierStr.c_str());
                 tokens.push_back(tok_integer);
                 return tok_integer;
             } else {
+                debug_print("tok %s: tok_float\n", IdentifierStr.c_str());
                 tokens.push_back(tok_float);
                 return tok_float;
             }
@@ -101,9 +80,10 @@ int ParserClass::GetToken() {
             tokens.push_back(tok_eof);
             return tok_eof;
         }
-        int ThisChar = LastChar;
-        tokens.push_back(ThisChar);
-        return ThisChar;
+        
+        //int ThisChar = LastChar;
+        tokens.push_back(LastChar);
+        return LastChar;
     }
     return -1;
 }
@@ -119,4 +99,64 @@ int ParserClass::GetCurToken() {
         return tokens.back();
     }
     return tok_eof;
+}
+
+FunctionAST* ParserClass::ParseFunction() {
+    if(GetCurToken()!=ParserClass::tok_func) return NULL;
+    PrototypeAST *Proto = ParsePrototype();
+    if (Proto == NULL) return ErrorF("Function error");
+    if (ExprAST *E = ParseExpression()) 
+        return new FunctionAST(Proto, E, ExprAST::type_undefined);
+    return NULL;
+}
+
+PrototypeAST* ParserClass::ParsePrototype() {
+    GetToken();
+    if (GetCurToken() != tok_identifier) return ErrorP("Expected function name in prototype");;
+    std::string FnName = IdentifierStr;
+    debug_print("FnName: %s\n", FnName.c_str());
+    GetToken();
+    debug_print("GetCurToken: %c\n", GetCurToken());
+    if(GetCurToken() != '(') {
+        return ErrorP("Expected '(' in prototype");
+    }
+    std::map<std::string, ExprAST::type> ArgNames;
+    GetToken();
+    while (GetCurToken() == tok_variable)  {
+        debug_print("tok_variable: %s\n", IdentifierStr.c_str());
+        ExprAST::type type = ExprAST::getType(IdentifierStr);
+        GetToken();
+        while(GetCurToken() == tok_identifier || GetCurToken() == ',') {
+            if (GetCurToken() == ',') {
+                GetToken();
+                continue;
+            }
+            ArgNames[IdentifierStr] = type;
+            debug_print("tok_identifier: %s\n", IdentifierStr.c_str());
+            GetToken();
+        }
+    }
+    debug_print("pre if: %s, %c \n", IdentifierStr.c_str(), GetCurToken());
+    if(GetCurToken() != ')') {
+        debug_print("tok_identifier: %s\n", IdentifierStr.c_str());
+        return ErrorP("Expected ')' in prototype");
+    }
+    std::vector<ExprAST::type> retrype;
+    if(GetToken() != '{' && GetCurToken()=='(' ) {
+        while (GetToken() != ')' ) {
+            if(GetCurToken() == ',') continue;
+            if(GetCurToken() == tok_variable) retrype.push_back(ExprAST::getType(IdentifierStr));
+        }
+    }
+    if(GetCurToken()==tok_variable) retrype.push_back(ExprAST::getType(IdentifierStr));
+    if (retrype.empty()) return new PrototypeAST(FnName, ArgNames);
+    return new PrototypeAST(FnName, ArgNames, retrype);
+}
+
+ExprAST *ParserClass::ParseExpression() {
+    ExprAST *LHS = ParsePrimary();
+    if (!LHS) return 0;
+  
+    //return ParseBinOpRHS(0, LHS);
+    return NULL;
 }
