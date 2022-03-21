@@ -1,6 +1,8 @@
 #include "ParserClass.h"
 #include "FunctionAST.h"
+#include "VariableExprAST.h"
 #include "Error.h"
+#include "Tools.h"
 #include <unistd.h>
 #include <ctype.h>
 #include "../configure.h"
@@ -27,7 +29,7 @@ int ParserClass::GetToken() {
     bool BoolVal;
     int LastChar = ' ';
     while ((LastChar = GetSymbol()) != -1) {
-        while (isspace(LastChar) || LastChar=='\t' || LastChar=='\r' || LastChar=='\n') LastChar = GetSymbol();
+        while (isspace(LastChar) || LastChar=='\t' || LastChar=='\r') LastChar = GetSymbol();
         if (LastChar == EOF) {
             tokens.push_back(tok_eof);
             return tok_eof;
@@ -101,6 +103,25 @@ int ParserClass::GetCurToken() {
     return tok_eof;
 }
 
+int ParserClass::PrevToken(int prev) {
+    if(prev<0) return tok_eof;
+    if ((tokens.size()-prev) < 0) {
+        return tok_eof;
+    }
+    return tokens[tokens.size()-prev];
+}
+
+int ParserClass::PrevToken() {
+    PrevToken(1);
+}
+
+int ParserClass::PrevToken() {
+    if (!tokens.empty()) {
+        return tokens.back();
+    }
+    return tok_eof;
+}
+
 FunctionAST* ParserClass::ParseFunction() {
     if(GetCurToken()!=ParserClass::tok_func) return NULL;
     PrototypeAST *Proto = ParsePrototype();
@@ -153,10 +174,58 @@ PrototypeAST* ParserClass::ParsePrototype() {
     return new PrototypeAST(FnName, ArgNames, retrype);
 }
 
+ExprAST *ParserClass::ParsePrimary() {
+
+  switch (GetCurToken()) {
+  default: return Error("unknown token when expecting an expression");
+  case tok_variable: ParseVariable();
+  //case tok_identifier: return ParseIdentifierExpr();
+  //case tok_number:     return ParseNumberExpr();
+  //case '(':            return ParseParenExpr();
+  }
+}
+
 ExprAST *ParserClass::ParseExpression() {
     ExprAST *LHS = ParsePrimary();
     if (!LHS) return 0;
   
     //return ParseBinOpRHS(0, LHS);
     return NULL;
+}
+
+ExprAST *ParserClass::ParseVariable() {
+    if(GetCurToken() != tok_variable) {
+        debug_print("CurToken: %c\n", GetCurToken());
+        return Error("this token not variable");
+    }
+    auto type = ExprAST::getType(IdentifierStr);
+    std::vector<ExprAST*> vExprAST;
+    GetToken();
+    while (GetCurToken()!=';' || GetCurToken()!='\n') {
+        if(GetCurToken() == ',') continue;
+        if(GetCurToken() == tok_identifier) {
+            switch (type)
+            {
+            case ExprAST::type_bool:
+                vExprAST.push_back(new VariableExprAST<bool>(IdentifierStr, type, false));
+                break;
+            case ExprAST::type_int:
+                vExprAST.push_back(new VariableExprAST<int>(IdentifierStr, type, 0));
+                break;
+            case ExprAST::type_string:
+                vExprAST.push_back(new VariableExprAST<std::string>(IdentifierStr, type, ""));
+                break;
+            case ExprAST::type_float:
+                vExprAST.push_back(new VariableExprAST<double>(IdentifierStr, type, 0));
+                break;
+            case ExprAST::type_char:
+                vExprAST.push_back(new VariableExprAST<char>(IdentifierStr, type, '\0'));
+                break;
+            default:
+                Error("")
+                break;
+            }
+        }
+    }
+    
 }

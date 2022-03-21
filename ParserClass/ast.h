@@ -14,15 +14,15 @@ public:
     type_string=5,
     type_user=6,
   };
-protected:
-  type typeval;
+private:
+  type Type;
 public:
   virtual ~ExprAST() {}
   inline type getType() {
-      return typeval;
+      return Type;
   }
   inline void setType(type typev) {
-      typeval=typev;
+      Type=typev;
   }
   static type getType(std::string type);
 };

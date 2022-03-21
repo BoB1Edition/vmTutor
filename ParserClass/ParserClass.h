@@ -16,6 +16,9 @@ private:
     int GetSymbol();
     std::vector<int> tokens;
     ExprAST *ParsePrimary();
+    ExprAST *ParseVariable();
+    int PrevToken();
+    int PrevToken(int prev);
 public:
     ParserClass(std::string string);
     ParserClass();
